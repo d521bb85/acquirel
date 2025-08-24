@@ -1,0 +1,10 @@
+pre-commit:
+  commands:
+    check:
+      glob: "*.{js,ts,jsx,tsx,json,jsonc,md}"
+      run: pnpm check -- {staged_files}
+      stage_fixed: true
+    typecheck:
+      run: pnpm typecheck
+    test:
+      run: pnpm test
