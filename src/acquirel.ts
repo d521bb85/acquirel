@@ -5,7 +5,7 @@ export class Acquirel {
 
   async attemptAcquire(key: string, { ttl }: AttemptAcquireParameters): Promise<Lock | AcquisitionFailure> {
     const effectiveKey = `acquirel:lock:${key}`;
-    const releaseToken = this.getReleaseToken();
+    const releaseToken = crypto.randomUUID();
 
     const response = await this.redis.set(effectiveKey, releaseToken, "PX", ttl, "NX");
 
@@ -64,12 +64,6 @@ export class Acquirel {
     }
 
     return lastResult;
-  }
-
-  private getReleaseToken(): string {
-    return crypto
-      .getRandomValues(new Uint8Array(4))
-      .reduce((token, byte) => `${token}${byte.toString(16).padStart(2, "0")}`, "");
   }
 
   private async release(effectiveKey: string, releaseToken: string): Promise<boolean> {
