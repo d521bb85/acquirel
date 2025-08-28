@@ -1,72 +1,35 @@
 import type Redis from "ioredis";
 
 export class Acquirel {
+  private releaseScriptHash: string | undefined;
+
   constructor(private readonly redis: Redis) {}
 
-  async attemptAcquire(key: string, { ttl }: AttemptAcquireParameters): Promise<Lock | AcquisitionFailure> {
+  async acquire(key: string, { ttl }: AcquireParameters): Promise<AcquisitionResult> {
     const effectiveKey = `acquirel:lock:${key}`;
     const releaseToken = crypto.randomUUID();
 
     const response = await this.redis.set(effectiveKey, releaseToken, "PX", ttl, "NX");
 
     if (response !== "OK") {
-      const retry = () => this.attemptAcquire(key, { ttl });
+      const retry = () => this.acquire(key, { ttl });
       return new AcquisitionFailure(retry);
     }
 
     const release = () => this.release(effectiveKey, releaseToken);
-    return new Lock(release);
-  }
-
-  async attemptAcquireWithTimeout(
-    key: string,
-    { ttl, timeout, interval }: AttemptAcquireWithTimeoutParameters
-  ): Promise<Lock | AcquisitionFailure> {
-    let lastResult: Lock | AcquisitionFailure;
-
-    const startTime = Date.now();
-    while (true) {
-      lastResult = await this.attemptAcquire(key, { ttl });
-      if (lastResult.isAcquired()) {
-        return lastResult;
-      }
-
-      const elapsedTime = Date.now() - startTime;
-      if (elapsedTime + interval >= timeout) {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
-
-    return lastResult;
-  }
-
-  async attemptAcquireWithMaxRetries(
-    key: string,
-    { ttl, maxRetries, interval }: AttemptAcquireWithMaxRetriesParameters
-  ): Promise<Lock | AcquisitionFailure> {
-    let lastResult: Lock | AcquisitionFailure;
-
-    let attemptsLeft = maxRetries + 1;
-    while (true) {
-      lastResult = await this.attemptAcquire(key, { ttl });
-      if (lastResult.isAcquired()) {
-        return lastResult;
-      }
-
-      attemptsLeft -= 1;
-      if (attemptsLeft <= 0) {
-        break;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
-
-    return lastResult;
+    return new AcquiredLock(release);
   }
 
   private async release(effectiveKey: string, releaseToken: string): Promise<boolean> {
+    if (!this.releaseScriptHash) {
+      this.releaseScriptHash = await this.loadReleaseScript();
+    }
+
+    const response = await this.redis.evalsha(this.releaseScriptHash, 1, effectiveKey, releaseToken);
+    return response !== 0;
+  }
+
+  private async loadReleaseScript() {
     const script = `
       if redis.call("GET", KEYS[1]) == ARGV[1] then
         return redis.call("DEL", KEYS[1])
@@ -74,43 +37,30 @@ export class Acquirel {
         return 0
       end
     `;
-    const response = await this.redis.eval(script, 1, effectiveKey, releaseToken);
-    return response !== 0;
+
+    // SCRIPT LOAD always returns a SHA1 hash of the script as a string
+    // https://redis.io/docs/latest/commands/script-load/#return-information
+    return this.redis.script("LOAD", script) as Promise<string>;
   }
 }
 
-export interface AttemptAcquireParameters {
+export interface AcquireParameters {
   ttl: number;
 }
 
-export interface AttemptAcquireWithTimeoutParameters {
-  ttl: number;
-  timeout: number;
-  interval: number;
-}
-
-export interface AttemptAcquireWithMaxRetriesParameters {
-  ttl: number;
-  maxRetries: number;
-  interval: number;
-}
-
-export interface AcquisitionResult {
-  isAcquired(): this is Lock;
-}
-
-export class Lock implements AcquisitionResult {
+export type AcquisitionResult = AcquiredLock | AcquisitionFailure;
+export class AcquiredLock {
   constructor(public readonly release: () => Promise<boolean>) {}
 
-  isAcquired(): this is Lock {
+  isAcquired(): this is AcquiredLock {
     return true;
   }
 }
 
-export class AcquisitionFailure implements AcquisitionResult {
+export class AcquisitionFailure {
   constructor(public readonly retry: () => Promise<AcquisitionResult>) {}
 
-  isAcquired(): this is Lock {
+  isAcquired(): this is AcquiredLock {
     return false;
   }
 }
