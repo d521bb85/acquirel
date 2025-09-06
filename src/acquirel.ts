@@ -49,6 +49,7 @@ export interface AcquireParameters {
 }
 
 export type AcquisitionResult = AcquiredLock | AcquisitionFailure;
+
 export class AcquiredLock {
   constructor(public readonly release: () => Promise<boolean>) {}
 

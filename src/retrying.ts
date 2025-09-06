@@ -15,12 +15,8 @@ export async function withTimeout(
   }
 
   const startTime = Date.now();
-  while (true) {
-    const elapsedTime = Date.now() - startTime;
-    if (elapsedTime + interval >= timeout) {
-      break;
-    }
 
+  while (Date.now() - startTime + interval < timeout) {
     await new Promise((resolve) => setTimeout(resolve, interval));
 
     lastResult = await lastResult.retry();
@@ -47,6 +43,7 @@ export async function withMaxRetries(
   }
 
   let retriesLeft = maxRetries;
+
   while (retriesLeft > 0) {
     await new Promise((resolve) => setTimeout(resolve, interval));
 

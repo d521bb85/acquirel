@@ -13,6 +13,8 @@
     "typecheck": "tsc --noEmit",
     "check": "biome check --write",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "dev": "vitest",
     "prepare": "lefthook install"
   },
   "keywords": [],
@@ -23,6 +25,7 @@
     "@biomejs/biome": "2.2.0",
     "@testcontainers/redis": "11.5.1",
     "@types/node": "24.3.0",
+    "@vitest/coverage-v8": "3.2.4",
     "ioredis": "5.7.0",
     "lefthook": "1.12.3",
     "rimraf": "^6.0.1",
