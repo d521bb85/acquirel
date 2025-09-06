@@ -9,3 +9,4 @@ dist/
 ehthumbs.db
 Thumbs.db
 *.log
+coverage
